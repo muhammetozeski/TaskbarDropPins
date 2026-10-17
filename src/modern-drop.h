@@ -11,6 +11,12 @@ namespace transfer = winrt::Windows::ApplicationModel::DataTransfer;
 namespace core = transfer::DragDrop::Core;
 namespace foundation = winrt::Windows::Foundation;
 
+struct DragDropManagerInterop : IInspectable {
+    virtual HRESULT STDMETHODCALLTYPE GetForWindow(HWND, REFIID, void**) = 0;
+};
+__CRT_UUID_DECL(DragDropManagerInterop, 0x5AD8CBA7, 0x4C01, 0x4DAC,
+               0x90, 0x74, 0x82, 0x78, 0x94, 0x29, 0x2D, 0x63)
+
 // Private Shell PinManager ABI. Interface identifiers and method order are
 // exposed by the current Windows Shell; only this isolated adapter uses it.
 static constexpr CLSID kPinManagerClass =
@@ -231,7 +237,10 @@ static UINT g_unsubscribeMessage;
 static void SubscribeModern(HWND window) {
     try {
         if (g_coreViews.contains(window)) return;
-        auto manager = core::CoreDragDropManager::GetForCurrentView();
+        auto interop = winrt::get_activation_factory<core::CoreDragDropManager, DragDropManagerInterop>();
+        core::CoreDragDropManager manager{nullptr};
+        Check(interop->GetForWindow(window, winrt::guid_of<core::ICoreDragDropManager>(),
+                                    winrt::put_abi(manager)));
         if (!manager) return;
         auto token = manager.TargetRequested([](const auto&, const core::CoreDropOperationTargetRequestedEventArgs& args) {
             if (g_stopping) return;

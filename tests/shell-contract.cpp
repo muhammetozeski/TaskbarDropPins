@@ -38,6 +38,15 @@ int wmain(int argc, wchar_t** argv) {
     if (FAILED(initialized)) return 3;
     int exitCode = 0;
     try {
+        if (wcscmp(argv[1], L"--layout") == 0) {
+            const auto buttons = TaskbarButtons(FindWindowW(L"Shell_TrayWnd", nullptr));
+            for (const auto& button : buttons)
+                std::wcout << L"BUTTON left=" << button.rectangle.left
+                           << L" right=" << button.rectangle.right << L" id=" << button.appId << L'\n';
+            Require(!buttons.empty(), "No native taskbar buttons were found");
+            CoUninitialize();
+            return 0;
+        }
         const fs::path root = argv[1];
         const auto folder = root / L"Klasör ve boşluk";
         fs::create_directories(folder);

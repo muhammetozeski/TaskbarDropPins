@@ -415,6 +415,7 @@ static HRESULT WINAPI RegisterHook(HWND window, IDropTarget* target) {
 }
 
 #include "modern-drop.h"
+#include "source-drop.h"
 
 static LRESULT CALLBACK WindowSubclass(HWND window, UINT message, WPARAM wp,
                                       LPARAM lp, DWORD_PTR) {
@@ -422,7 +423,7 @@ static LRESULT CALLBACK WindowSubclass(HWND window, UINT message, WPARAM wp,
     if (message == g_discoverMessage && !g_stopping) {
         wchar_t name[100]{};
         GetClassNameW(window, name, ARRAYSIZE(name));
-        if (wcscmp(name, L"Windows.UI.Core.CoreWindow") == 0) SubscribeModern(window);
+        SubscribeModern(window);
         auto target = reinterpret_cast<IDropTarget*>(GetPropW(window, L"OleDropTargetInterface"));
         return target && DiscoverTarget(target, window);
     }
@@ -434,7 +435,9 @@ static BOOL CALLBACK DiscoverWindow(HWND window, LPARAM) {
     wchar_t name[100]{};
     GetClassNameW(window, name, ARRAYSIZE(name));
     if ((GetPropW(window, L"OleDropTargetInterface") ||
-         wcscmp(name, L"Windows.UI.Core.CoreWindow") == 0) &&
+         wcscmp(name, L"Windows.UI.Core.CoreWindow") == 0 ||
+         wcscmp(name, L"Windows.UI.Composition.DesktopWindowContentBridge") == 0 ||
+         wcscmp(name, L"Windows.UI.Input.InputSite.WindowClass") == 0) &&
         WindhawkUtils::SetWindowSubclassFromAnyThread(window, WindowSubclass, 0)) {
         g_subclassed.push_back(window);
         SendMessageW(window, g_discoverMessage, 0, 0);
@@ -470,6 +473,7 @@ BOOL Wh_ModInit() {
     g_unsubscribeMessage = RegisterWindowMessageW(L"TaskbarDropPins.Unsubscribe.v1");
     Wh_SetIntValue(L"hookedDropHandlers", 0);
     Wh_SetIntValue(L"modernViews", 0);
+    if (!InitializeSourceHook()) return FALSE;
     const auto ole = GetModuleHandleW(L"ole32.dll");
     if (!ole || !Wh_SetFunctionHook(reinterpret_cast<void*>(GetProcAddress(ole, "RegisterDragDrop")),
                                     reinterpret_cast<void*>(RegisterHook),

@@ -26,6 +26,8 @@ $source = [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'src\taskbar-drop-pins
 $bundled = $source.Replace('#include "launcher-bytes.h"', $embedded)
 $modern = [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'src\modern-drop.h'))
 $bundled = $bundled.Replace('#include "modern-drop.h"', $modern)
+$sourceDrop = [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'src\source-drop.h'))
+$bundled = $bundled.Replace('#include "source-drop.h"', $sourceDrop)
 $modSource = Join-Path $dist 'taskbar-drop-pins.wh.cpp'
 [IO.File]::WriteAllText($modSource, $bundled, [Text.UTF8Encoding]::new($false))
 $modLibrary = Join-Path $dist 'taskbar-drop-pins.dll'
