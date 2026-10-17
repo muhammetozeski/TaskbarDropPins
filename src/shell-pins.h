@@ -30,7 +30,7 @@ static HWND TaskbarAtPoint(POINT point) {
     EnumWindows([](HWND window, LPARAM parameter) -> BOOL {
         auto& search = *reinterpret_cast<Search*>(parameter);
         RECT rect{};
-        if (IsTaskbar(window) && GetAncestor(window, GA_ROOT) == window &&
+        if (HasTaskbarWindowClass(window) && GetAncestor(window, GA_ROOT) == window &&
             IsWindowVisible(window) && GetWindowRect(window, &rect) &&
             PtInRect(&rect, search.point)) { search.result = window; return FALSE; }
         return TRUE;

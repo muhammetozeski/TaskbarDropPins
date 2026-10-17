@@ -28,7 +28,7 @@ Verified with Windhawk 1.7.3 on Windows 11 26H2, build 26300.9711. Dragging from
 
 ## Install
 
-1. Download `taskbar-drop-pins.wh.cpp` from the [latest release](https://github.com/muhammetozeski/TaskbarDropPins/releases/latest), or extract it from `TaskbarDropPins-v1.0.0.zip`.
+1. Download `taskbar-drop-pins.wh.cpp` from the [latest release](https://github.com/muhammetozeski/TaskbarDropPins/releases/latest), or extract it from that release's ZIP package.
 2. Create a local mod in Windhawk.
 3. Replace its template with the entire downloaded file, then compile and enable it.
 4. Drag a file, folder or `.lnk` shortcut onto the taskbar.

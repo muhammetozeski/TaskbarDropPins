@@ -64,6 +64,18 @@ int wmain(int argc, wchar_t** argv) {
     if (FAILED(initialized)) return 3;
     int exitCode = 0;
     try {
+        if (wcscmp(argv[1], L"--taskbar-detection") == 0) {
+            const auto taskbar = FindWindowW(L"Shell_TrayWnd", nullptr);
+            RECT rectangle{};
+            Require(taskbar && GetWindowRect(taskbar, &rectangle), "Cannot find the native taskbar");
+            const POINT point{(rectangle.left + rectangle.right) / 2,
+                              (rectangle.top + rectangle.bottom) / 2};
+            Require(TaskbarAtPoint(point) == taskbar,
+                    "A source outside the taskbar process cannot detect the taskbar");
+            std::cout << "PASS native taskbar detection from a different process\n";
+            CoUninitialize();
+            return 0;
+        }
         if (wcscmp(argv[1], L"--layout") == 0) {
             const auto buttons = TaskbarButtons(FindWindowW(L"Shell_TrayWnd", nullptr));
             for (const auto& button : buttons)

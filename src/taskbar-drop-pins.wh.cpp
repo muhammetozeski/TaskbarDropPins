@@ -2,7 +2,7 @@
 // @id              taskbar-drop-pins
 // @name            Taskbar Drop Pins
 // @description     Pin files, folders and shortcuts by dropping them among native Windows 11 taskbar icons.
-// @version         1.0.0
+// @version         1.0.1
 // @author          Portakal
 // @github          https://github.com/muhammetozeski
 // @homepage        https://github.com/muhammetozeski/TaskbarDropPins
@@ -90,16 +90,20 @@ static void WriteBytes(const fs::path& path, const void* bytes, DWORD size) {
     if (!ok || written != size) Check(HRESULT_FROM_WIN32(error));
 }
 
-static bool IsTaskbar(HWND window) {
+static bool HasTaskbarWindowClass(HWND window) {
     if (!window) return false;
     HWND root = GetAncestor(window, GA_ROOT);
-    DWORD process = 0;
-    GetWindowThreadProcessId(root, &process);
-    if (process != GetCurrentProcessId()) return false;
     wchar_t name[80]{};
     GetClassNameW(root, name, ARRAYSIZE(name));
     return wcscmp(name, L"Shell_TrayWnd") == 0 ||
            wcscmp(name, L"Shell_SecondaryTrayWnd") == 0;
+}
+
+static bool IsTaskbar(HWND window) {
+    if (!window) return false;
+    DWORD process = 0;
+    GetWindowThreadProcessId(GetAncestor(window, GA_ROOT), &process);
+    return process == GetCurrentProcessId() && HasTaskbarWindowClass(window);
 }
 
 static std::vector<fs::path> ReadPaths(IDataObject* object) {

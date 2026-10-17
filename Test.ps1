@@ -1,7 +1,8 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][string]$TestDirectory,
-    [Parameter(Mandatory)][string]$WindhawkPath
+    [Parameter(Mandatory)][string]$WindhawkPath,
+    [switch]$TaskbarDetectionOnly
 )
 $ErrorActionPreference = 'Stop'
 if (-not (Test-Path -LiteralPath $TestDirectory -PathType Container)) { throw 'Pass an existing empty NewTemp directory.' }
@@ -13,5 +14,6 @@ $output = Join-Path $TestDirectory 'shell-contract.exe'
     (Join-Path $PSScriptRoot 'tests\shell-contract.cpp') '-o' $output `
     '-lole32' '-loleaut32' '-lshell32' '-lshlwapi' '-lpropsys' '-luuid' '-lcomctl32' '-lruntimeobject' '-luiautomationcore' '-lwindowscodecs'
 if ($LASTEXITCODE) { throw "Test compilation failed with exit code $LASTEXITCODE" }
-& $output $TestDirectory
+$testArgument = if ($TaskbarDetectionOnly) { '--taskbar-detection' } else { $TestDirectory }
+& $output $testArgument
 if ($LASTEXITCODE) { throw "Shell contract test failed with exit code $LASTEXITCODE" }
