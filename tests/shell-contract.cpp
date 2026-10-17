@@ -86,6 +86,38 @@ int wmain(int argc, wchar_t** argv) {
         Require(!PrepareDataObject(converted.Get()), "Native wrapper drag must pass through for reordering");
         std::cout << "PASS file/folder Shell conversion, Unicode paths, distinct identities, duplicate reuse, native reorder passthrough\n";
 
+        const auto folderIcon = g_storage / L"icons" / (Identity(folder) + L"-v2.ico");
+        ComPtr<IWICImagingFactory> factory;
+        Check(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&factory)));
+        ComPtr<IWICBitmapDecoder> decoder;
+        Check(factory->CreateDecoderFromFilename(folderIcon.c_str(), nullptr, GENERIC_READ,
+                                                 WICDecodeMetadataCacheOnLoad, &decoder));
+        ComPtr<IWICBitmapFrameDecode> decoded;
+        Check(decoder->GetFrame(0, &decoded));
+        UINT iconWidth = 0, iconHeight = 0;
+        Check(decoded->GetSize(&iconWidth, &iconHeight));
+        ComPtr<IWICFormatConverter> iconPixels;
+        Check(factory->CreateFormatConverter(&iconPixels));
+        Check(iconPixels->Initialize(decoded.Get(), GUID_WICPixelFormat32bppBGRA,
+              WICBitmapDitherTypeNone, nullptr, 0, WICBitmapPaletteTypeCustom));
+        std::vector<BYTE> rendered(iconWidth * iconHeight * 4);
+        Check(iconPixels->CopyPixels(nullptr, iconWidth * 4, static_cast<UINT>(rendered.size()), rendered.data()));
+        SHFILEINFOW originalIcon{};
+        Require(SHGetFileInfoW(folder.c_str(), 0, &originalIcon, sizeof(originalIcon),
+                              SHGFI_ICON | SHGFI_LARGEICON) != 0, "Cannot obtain original Shell icon");
+        ComPtr<IWICBitmap> originalBitmap;
+        const auto bitmapResult = factory->CreateBitmapFromHICON(originalIcon.hIcon, &originalBitmap);
+        DestroyIcon(originalIcon.hIcon);
+        Check(bitmapResult);
+        ComPtr<IWICFormatConverter> originalPixels;
+        Check(factory->CreateFormatConverter(&originalPixels));
+        Check(originalPixels->Initialize(originalBitmap.Get(), GUID_WICPixelFormat32bppBGRA,
+              WICBitmapDitherTypeNone, nullptr, 0, WICBitmapPaletteTypeCustom));
+        std::vector<BYTE> expected(rendered.size());
+        Check(originalPixels->CopyPixels(nullptr, iconWidth * 4, static_cast<UINT>(expected.size()), expected.data()));
+        Require(rendered == expected, "Saved icon pixels differ from the original Shell icon");
+        std::cout << "PASS full-color icon roundtrip preserves every BGRA pixel and transparency\n";
+
         const auto originalLink = root / L"Belge kısayolu.lnk";
         ComPtr<IShellLinkW> shortcut;
         ComPtr<IPersistFile> persist;

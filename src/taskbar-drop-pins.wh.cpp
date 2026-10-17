@@ -6,7 +6,7 @@
 // @author          Portakal
 // @include         explorer.exe
 // @architecture    x86-64
-// @compilerOptions -lole32 -loleaut32 -lshell32 -lshlwapi -lpropsys -luuid -lcomctl32 -lruntimeobject -luiautomationcore
+// @compilerOptions -lole32 -loleaut32 -lshell32 -lshlwapi -lpropsys -luuid -lcomctl32 -lruntimeobject -luiautomationcore -lwindowscodecs
 // ==/WindhawkMod==
 // ==WindhawkModReadme==
 /*
@@ -33,9 +33,11 @@ Only local filesystem objects are supported; virtual attachments are passed thro
 #include <propvarutil.h>
 #include <olectl.h>
 #include <wrl/client.h>
+#include <wincodec.h>
 #include <array>
 #include <atomic>
 #include <cwctype>
+#include <cstring>
 #include <filesystem>
 #include <memory>
 #include <mutex>
@@ -147,21 +149,50 @@ static void SaveIcon(const fs::path& source, const fs::path& destination) {
     SHFILEINFOW info{};
     if (!SHGetFileInfoW(source.c_str(), 0, &info, sizeof(info),
                        SHGFI_ICON | SHGFI_LARGEICON)) return;
-    PICTDESC description{};
-    description.cbSizeofstruct = sizeof(description);
-    description.picType = PICTYPE_ICON;
-    description.icon.hicon = info.hIcon;
-    ComPtr<IPicture> picture;
-    const HRESULT created = OleCreatePictureIndirect(&description, IID_IPicture,
-                                                      TRUE, &picture);
-    if (FAILED(created)) { DestroyIcon(info.hIcon); return; }
+    struct IconOwner { HICON icon; ~IconOwner() { DestroyIcon(icon); } } owner{info.hIcon};
+    ComPtr<IWICImagingFactory> factory;
+    Check(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER,
+                           IID_PPV_ARGS(&factory)));
+    ComPtr<IWICBitmap> bitmap;
+    Check(factory->CreateBitmapFromHICON(info.hIcon, &bitmap));
+    UINT width = 0, height = 0;
+    Check(bitmap->GetSize(&width, &height));
+    if (!width || !height || width > 256 || height > 256) Check(E_INVALIDARG);
     ComPtr<IStream> stream;
-    if (FAILED(SHCreateStreamOnFileEx(destination.c_str(),
-        STGM_CREATE | STGM_WRITE | STGM_SHARE_EXCLUSIVE, FILE_ATTRIBUTE_NORMAL,
-        TRUE, nullptr, &stream))) return;
-    LONG written = 0;
-    const HRESULT result = picture->SaveAsFile(stream.Get(), TRUE, &written);
-    if (FAILED(result)) Wh_Log(L"Icon extraction failed: %08X", result);
+    Check(CreateStreamOnHGlobal(nullptr, TRUE, &stream));
+    ComPtr<IWICBitmapEncoder> encoder;
+    Check(factory->CreateEncoder(GUID_ContainerFormatPng, nullptr, &encoder));
+    Check(encoder->Initialize(stream.Get(), WICBitmapEncoderNoCache));
+    ComPtr<IWICBitmapFrameEncode> frame;
+    Check(encoder->CreateNewFrame(&frame, nullptr));
+    Check(frame->Initialize(nullptr));
+    Check(frame->SetSize(width, height));
+    WICPixelFormatGUID format = GUID_WICPixelFormat32bppBGRA;
+    Check(frame->SetPixelFormat(&format));
+    Check(frame->WriteSource(bitmap.Get(), nullptr));
+    Check(frame->Commit());
+    Check(encoder->Commit());
+    STATSTG stats{};
+    Check(stream->Stat(&stats, STATFLAG_NONAME));
+    if (stats.cbSize.HighPart) Check(E_OUTOFMEMORY);
+    HGLOBAL memory = nullptr;
+    Check(GetHGlobalFromStream(stream.Get(), &memory));
+    const auto png = static_cast<const BYTE*>(GlobalLock(memory));
+    if (!png) Check(HRESULT_FROM_WIN32(GetLastError()));
+    const DWORD size = stats.cbSize.LowPart;
+    std::vector<BYTE> bytes(22 + size);
+    // ICO directory followed by a lossless 32-bit PNG frame. Windows 11 reads
+    // PNG-based ICO frames without the palette loss of IPicture::SaveAsFile.
+    bytes[2] = 1; bytes[4] = 1;
+    bytes[6] = static_cast<BYTE>(width == 256 ? 0 : width);
+    bytes[7] = static_cast<BYTE>(height == 256 ? 0 : height);
+    bytes[10] = 1; bytes[12] = 32;
+    memcpy(bytes.data() + 14, &size, sizeof(size));
+    const DWORD offset = 22;
+    memcpy(bytes.data() + 18, &offset, sizeof(offset));
+    memcpy(bytes.data() + 22, png, size);
+    GlobalUnlock(memory);
+    WriteBytes(destination, bytes.data(), static_cast<DWORD>(bytes.size()));
 }
 
 static fs::path PrepareShortcut(const fs::path& source) {
@@ -177,7 +208,7 @@ static fs::path PrepareShortcut(const fs::path& source) {
     const auto linkDirectory = g_storage / L"links" / id;
     fs::create_directories(linkDirectory);
     auto destination = linkDirectory / (label + L".lnk");
-    const auto icon = g_storage / L"icons" / (id + L".ico");
+    const auto icon = g_storage / L"icons" / (id + L"-v2.ico");
     fs::path launchTarget = source;
     if (Lower(source.extension().wstring()) == L".lnk") {
         launchTarget = g_storage / L"targets" / (id + L".lnk");

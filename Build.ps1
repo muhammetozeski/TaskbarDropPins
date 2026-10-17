@@ -33,6 +33,6 @@ $modSource = Join-Path $dist 'taskbar-drop-pins.wh.cpp'
 $modLibrary = Join-Path $dist 'taskbar-drop-pins.dll'
 & $compiler @common '-shared' '-DWH_MOD' '-DWH_MOD_ID=L"taskbar-drop-pins"' '-DWH_MOD_VERSION=L"0.1.0"' `
     $engineLibrary '-x' 'c++' $modSource '-include' 'windhawk_api.h' '-Wl,--export-all-symbols' `
-    '-o' $modLibrary '-lole32' '-loleaut32' '-lshell32' '-lshlwapi' '-lpropsys' '-luuid' '-lcomctl32' '-lruntimeobject' '-luiautomationcore'
+    '-o' $modLibrary '-lole32' '-loleaut32' '-lshell32' '-lshlwapi' '-lpropsys' '-luuid' '-lcomctl32' '-lruntimeobject' '-luiautomationcore' '-lwindowscodecs'
 if ($LASTEXITCODE) { throw "Mod compilation failed with exit code $LASTEXITCODE" }
 Get-Item -LiteralPath $launcher, $modLibrary, $modSource | Select-Object Name, Length, FullName
