@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$WindhawkPath = 'C:\E\kp\scoop\apps\windhawk\current',
+    [Parameter(Mandatory)][string]$WindhawkPath,
     [switch]$Disable
 )
 $ErrorActionPreference = 'Stop'
@@ -23,7 +23,10 @@ $source = Join-Path $PSScriptRoot 'dist\taskbar-drop-pins.wh.cpp'
 if (-not (Test-Path -LiteralPath $library) -or -not (Test-Path -LiteralPath $source)) {
     throw 'Build.ps1 must finish before installation.'
 }
-$libraryName = 'taskbar-drop-pins_0.1.0_' + (Get-FileHash -LiteralPath $library -Algorithm SHA256).Hash.Substring(0,12).ToLowerInvariant() + '.dll'
+$versionMatch = [regex]::Match([IO.File]::ReadAllText($source), '(?m)^// @version\s+([0-9]+\.[0-9]+\.[0-9]+)\s*$')
+if (-not $versionMatch.Success) { throw 'The built source does not declare a semantic @version.' }
+$version = $versionMatch.Groups[1].Value
+$libraryName = "taskbar-drop-pins_${version}_" + (Get-FileHash -LiteralPath $library -Algorithm SHA256).Hash.Substring(0,12).ToLowerInvariant() + '.dll'
 New-Item -ItemType Directory -Path (Join-Path $mods '64') -Force | Out-Null
 $installedLibrary = Join-Path $mods "64\$libraryName"
 if (-not (Test-Path -LiteralPath $installedLibrary)) { Copy-Item -LiteralPath $library -Destination $installedLibrary }
@@ -32,12 +35,12 @@ $configuration = @"
 [Mod]
 LibraryFileName=$libraryName
 Disabled=0
-LoggingEnabled=1
+LoggingEnabled=0
 DebugLoggingEnabled=0
 Include=explorer.exe
 Exclude=
 Architecture=x86-64
-Version=0.1.0
+Version=$version
 SettingsChangeTime=$([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())
 "@
 [IO.File]::WriteAllText($configFile, $configuration, [Text.UTF8Encoding]::new($false))

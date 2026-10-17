@@ -1,61 +1,89 @@
 # Taskbar Drop Pins
 
-Windows 11 görev çubuğuna Dosya Gezgini veya masaüstünden dosya, klasör ve `.lnk` kısayollarını sürükleyerek sabitleyen Windhawk modu. Öğeler mevcut uygulama simgelerinin arasında yer alır; Windows'un kendi görev çubuğu ve normal sürükleyerek sıralama davranışı kullanılır.
+[![Release](https://img.shields.io/github/v/release/muhammetozeski/TaskbarDropPins)](https://github.com/muhammetozeski/TaskbarDropPins/releases/latest)
+[![Windows 11](https://img.shields.io/badge/Windows-11-0078D4)](https://github.com/muhammetozeski/TaskbarDropPins)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-## Çalışma biçimi
+Pin files, folders and `.lnk` shortcuts by dragging them from File Explorer or the desktop onto the **native Windows 11 taskbar**.
 
-`explorer.exe` içindeki `DoDragDrop` çağrısı izlenir. Modun `IDropSource` sarmalayıcısı, sürükleme görev çubuğunun üzerindeyken bağlantı geri bildirimi verir. Fare bırakıldığında kaynak dosya aktarımı iptal edilir; kaynak dosyayı taşımadan ayrı bir iş parçacığında Shell PinManager ile sabitleme yapılır. Görev çubuğu düğmelerinin ekran konumları yalnızca okunur ve bırakılan yere göre `MoveTaskbarPin` çağrılır.
+Drop an item among your application icons, click it to open, and drag its taskbar button to reorder it. The mod keeps the Windows 11 taskbar in place.
 
-Dosya veya klasör için normal bir uygulama kısayolu üretilir: hedef 13.312 baytlık `TaskbarDropPins.Launcher-v1.exe`, bağımsız değişken ise açılacak öğenin tam yoludur. Başlatıcı `ShellExecuteExW` kullanır. `.lnk` dosyalarının kalıcı bir kopyası açılır; Windows kısayolun hedefini, bağımsız değişkenlerini ve çalışma klasörünü kendisi işler. Aynı programa giden farklı `.lnk` dosyaları ayrı uygulama kimlikleri alır.
+## Features
 
-Kimlik, küçük harfe çevrilmiş ve sözdizimsel olarak normalleştirilmiş yolun UTF-16 kod birimleri üzerinde 64 bit Fowler–Noll–Vo benzeri döngüyle üretilen 16 onaltılık karakterdir. Görünen ada eklenmez: `links\<kimlik>\Karışık.lnk` ve `AppUserModel.ID=TaskbarDropPins.<kimlik>` kullanılır. İlk geliştirme sürümünde bu kimlik dosya adının sonunda bulunuyordu.
+- Files open with their associated Windows application; folders open in File Explorer.
+- `.lnk` targets, arguments, working directories and saved window settings are preserved.
+- Shortcuts to the same executable can remain separate taskbar items.
+- Item names stay readable; internal identifiers are stored separately.
+- Icons preserve their original colors and transparency.
+- Original files and folders stay where they are.
+- Existing pins continue to open after Windhawk is closed. Their native buttons can still be reordered.
+- Hold **Shift** to retain ordinary Windows file dragging instead of adding a pin.
 
-Simgeler Windows'tan alınır. Windows Imaging Component ile kayıpsız, saydamlığı koruyan 32 bit PNG kareli ICO dosyasına yazılır. İlk sürümün `IPicture::SaveAsFile` yöntemi 4 bit palete düşürdüğü için değiştirilmiştir.
+## Requirements
 
-`Shift` basılıyken sürükleme asıl Windows davranışına bırakılır. Mevcut görev çubuğu simgeleri Windows'un normal işleyicisiyle sıralanır. Modun eski OLE hedef işleyicilerine yönelik dönüşümü de bulunur; bu bilgisayarda çalışan yol kaynak tarafındaki `DoDragDrop` yakalayıcısıdır.
+- Windows 11, x64.
+- [Windhawk](https://windhawk.net/).
 
-## Kalıcı dosyalar
+Verified with Windhawk 1.7.3 on Windows 11 26H2, build 26300.9711. Dragging from File Explorer and the desktop is the verified source workflow. The mod uses private Windows Shell interfaces for pinning and positioning.
 
-Proje: `C:\E\KodlamaProjeleri\c++\TaskbarDropPins`.
+## Install
 
-Bu bilgisayardaki kalıcı mod verileri: `C:\E\kp\scoop\persist\windhawk\AppData\Engine\ModsWritable\mod-storage\taskbar-drop-pins`.
+1. Download `taskbar-drop-pins.wh.cpp` from the [latest release](https://github.com/muhammetozeski/TaskbarDropPins/releases/latest), or extract it from `TaskbarDropPins-v1.0.0.zip`.
+2. Create a local mod in Windhawk.
+3. Replace its template with the entire downloaded file, then compile and enable it.
+4. Drag a file, folder or `.lnk` shortcut onto the taskbar.
 
-- `links\<kimlik>\<görünen ad>.lnk`: üretilen kısayollar.
-- `targets\<kimlik>.lnk`: bırakılan özgün `.lnk` dosyalarının kopyaları.
-- `icons\<kimlik>-v2.ico`: tam renkli simgeler.
-- `TaskbarDropPins.Launcher-v1.exe`: ortak yerel başlatıcı.
+The release file is self-contained: it includes the small native launcher's bytes, so it does not download another program. Windhawk compiles the mod for its own installed engine. No .NET runtime is required.
 
-Veriler sabitlenen öğeler tarafından kullanıldığı için mod kapatılınca silinmez. Kaynak dosya ve klasörler yerlerinde kalır.
+The executables are digitally signed. To let Windows verify the signature, run `Install-Certificate.cmd` from `SignatureTrust.zip` once. The programs run without it; only the signature stays unverified. The signed executable is the launcher embedded inside the release source.
 
-## Kaynaklar ve betikler
+## How it works
 
-- `src/taskbar-drop-pins.wh.cpp`: mod, kısayol üretimi ve simge kaydı.
-- `src/source-drop.h`: Dosya Gezgini sürükleme kaynağı sarmalayıcısı.
-- `src/modern-drop.h`: Shell PinManager ve görev çubuğu konum okuma kodu.
-- `src/launcher.cpp`: küçük yerel dosya açıcı.
-- `Build.ps1`: kurulu Windhawk derleyicisiyle mod ve tek dosyalık dağıtım kaynağı üretimi.
-- `Install.ps1`: derlenmiş modun kurulu taşınabilir Windhawk'a eklenmesi.
-- `Test.ps1`: ayrı, boş bir NewTemp klasöründe Shell sözleşmesi ve simge kaydı testleri.
-- `dist/`: derlenmiş dağıtım dosyaları; Git'e eklenmez.
+The mod wraps Explorer's `DoDragDrop` source. When a filesystem item is released over the taskbar, it cancels the original file transfer and submits a separate pin request. This keeps the source file in place.
 
-## Derleme ve kurulum
+An item-specific `.lnk` targets a small native launcher, which opens the saved target using `ShellExecuteExW` and exits. Each item has a stable `AppUserModel.ID`. A copy of a dropped `.lnk` is retained so Windows can apply the original shortcut's launch settings.
 
-PowerShell 7 ile proje klasöründe `pwsh -File .\Build.ps1` ve ardından `pwsh -File .\Install.ps1` komutlarını kullanın. Betikler varsayılan olarak `C:\E\kp\scoop\apps\windhawk\current` kurulumunu kullanır; `-WindhawkPath` ile başka kurulum verilebilir. İnternetten bağımlılık indirilmez.
+Shell PinManager inserts the genuine taskbar pin. A read-only accessibility query supplies the existing buttons' positions; native taskbar behavior handles later manual reordering. The mod also retains an OLE target adapter; Explorer's source hook is the verified path on the tested Windows build.
 
-`pwsh -File .\Install.ps1 -Disable` yeni sürükleme dönüşümünü kapatır. Sabitlenen öğeler kalıcı başlatıcıyla açılmaya devam eder. Öğeler Windows'un görev çubuğu menüsünden kaldırılır.
+Icons are written as lossless 32-bit image frames in `.ico` containers, retaining transparency. Runtime errors are recorded with Windhawk's logger and diagnostic values. An original drag is never replayed after it has begun.
 
-## Doğrulama — 17 Ekim 2026
+## Storage and removal
 
-Windhawk 1.7.3 ve Windows 11 26H2, derleme 26300.9711 üzerinde klasör, dosya ve `.lnk` ekleme, açılma ve simgelerin arasına sürükleyerek sıralama kullanıcı tarafından doğrulandı.
+The launcher, generated links, copied `.lnk` targets and icons live in the permanent directory returned by Windhawk's `Wh_GetModStoragePath`. They are outside this source repository and outside temporary folders.
 
-Otomatik testler: gerçek Shell veri nesneleri; Türkçe ve boşluk içeren yollar; farklı öğelerin ayrı kimlikleri; tekrar işlemde aynı kimliğin kullanılması; mevcut mod kısayollarının yeniden dönüştürülmemesi; `.lnk` bağımsız değişkenleri, çalışma klasörü ve kaydedilmiş pencere gösterimi; aynı EXE'ye farklı kısayollar; karışık çoklu seçim; kaydedilen simgenin her renk ve saydamlık baytının özgün Shell simgesiyle aynı olması. Bu testler geçti.
+- `links/<identity>/<item name>.lnk`: generated links.
+- `targets/<identity>.lnk`: preserved input shortcuts.
+- `icons/<identity>-v2.ico`: full-color icons.
+- `TaskbarDropPins.Launcher-v1.exe`: the shared launcher.
 
-Test girdileri ve çıktıları NewTemp'in oluşturduğu ayrı klasörlerde tutulur. Proje veya kalıcı çalışma verileri geçici klasöre konulmaz.
+Disable the mod in Windhawk to stop new drag conversions. Unpin individual items using the normal Windows taskbar menu. Existing pins need their launcher and saved target/icon files, so disabling the mod does not remove that data.
 
-## Teknik dayanaklar
+## Build
 
-- [Microsoft: SHDoDragDrop](https://learn.microsoft.com/en-us/windows/win32/api/shlobj_core/nf-shlobj_core-shdodragdrop)
-- [Microsoft: IDropTarget::DragEnter](https://learn.microsoft.com/en-us/windows/win32/api/oleidl/nf-oleidl-idroptarget-dragenter)
-- [Windhawk: mod oluşturma](https://github.com/ramensoftware/windhawk/wiki/Creating-a-new-mod)
+Use PowerShell 7 and an installed Windhawk compiler:
 
-PinManager, Windows Shell'in özel COM arayüzüdür; bu sürümde kullanılan arayüz kimlikleri ve yöntem sırası `src/modern-drop.h` dosyasında izole edilmiştir.
+```powershell
+.\Build.ps1 -WindhawkPath 'C:\Program Files\Windhawk'
+```
+
+`dist/taskbar-drop-pins.wh.cpp` is the self-contained mod source; `dist/taskbar-drop-pins.dll` is for the matching local Windhawk engine. The original launcher code is in [src/launcher.cpp](src/launcher.cpp).
+
+For a signed build, pass `-SigningScript <absolute path to your signing script> -RequireSignature`. The script must accept the executable path as its first argument. Signing happens **before** the launcher is embedded. No signing certificate or private key is included in the repository.
+
+`Install.ps1 -WindhawkPath <absolute path>` installs a compiled build into **portable Windhawk**. Standard installed Windhawk users should use the local-mod workflow above.
+
+`Test.ps1 -WindhawkPath <absolute path> -TestDirectory <empty temporary directory>` verifies real Shell data objects, Unicode and spaced paths, `.lnk` preservation, stable identities, full-color icon pixel equality, and drag exception handling without replaying an operation. The desktop/taskbar integration was also manually verified.
+
+`Publish.ps1 -TrustDirectory <absolute path to the public certificate bundle>` packages the signed build and writes SHA-256 checksums. It includes only explicitly selected distribution files.
+
+## Source layout
+
+- [src/taskbar-drop-pins.wh.cpp](src/taskbar-drop-pins.wh.cpp): mod lifecycle, Shell data conversion, links and icons.
+- [src/source-drop.h](src/source-drop.h): Explorer drag source, operation boundary and worker.
+- [src/shell-pins.h](src/shell-pins.h): private Shell adapter and taskbar position reading.
+- [src/launcher.cpp](src/launcher.cpp): short-lived native launcher.
+- [tests/shell-contract.cpp](tests/shell-contract.cpp): Shell and drag contract checks.
+
+## License
+
+[MIT](LICENSE).

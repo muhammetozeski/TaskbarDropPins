@@ -1,2 +1,8 @@
 dist/
 build/
+publish/
+*.pfx
+*.p12
+*.key
+Imzalama.pfx
+PFX-PAROLA.txt

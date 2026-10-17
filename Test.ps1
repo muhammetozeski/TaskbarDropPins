@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][string]$TestDirectory,
-    [string]$WindhawkPath = 'C:\E\kp\scoop\apps\windhawk\current'
+    [Parameter(Mandatory)][string]$WindhawkPath
 )
 $ErrorActionPreference = 'Stop'
 if (-not (Test-Path -LiteralPath $TestDirectory -PathType Container)) { throw 'Pass an existing empty NewTemp directory.' }

@@ -6,6 +6,32 @@ static void Require(bool result, const char* message) {
     if (!result) throw std::runtime_error(message);
 }
 
+static int nativeDragCalls = 0;
+static HRESULT WINAPI FailingNativeDrag(IDataObject*, IDropSource*, DWORD, DWORD*) {
+    ++nativeDragCalls;
+    throw std::runtime_error("simulated native drag failure");
+}
+static HRESULT WINAPI CanceledNativeDrag(IDataObject*, IDropSource*, DWORD, DWORD* effect) {
+    ++nativeDragCalls;
+    if (effect) *effect = DROPEFFECT_NONE;
+    return DRAGDROP_S_CANCEL;
+}
+struct TestDropSource final : IDropSource {
+    ULONG references = 1;
+    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID id, void** object) override {
+        if (!object) return E_POINTER;
+        if (id == IID_IUnknown || id == IID_IDropSource) {
+            *object = static_cast<IDropSource*>(this); AddRef(); return S_OK;
+        }
+        *object = nullptr;
+        return E_NOINTERFACE;
+    }
+    ULONG STDMETHODCALLTYPE AddRef() override { return ++references; }
+    ULONG STDMETHODCALLTYPE Release() override { return --references; }
+    HRESULT STDMETHODCALLTYPE QueryContinueDrag(BOOL, DWORD) override { return DRAGDROP_S_CANCEL; }
+    HRESULT STDMETHODCALLTYPE GiveFeedback(DWORD) override { return DRAGDROP_S_USEDEFAULTCURSORS; }
+};
+
 static ComPtr<IDataObject> Files(const std::vector<fs::path>& paths) {
     std::vector<PIDLIST_ABSOLUTE> ids;
     for (const auto& path : paths) {
@@ -166,6 +192,25 @@ int wmain(int argc, wchar_t** argv) {
         auto mixedConverted = PrepareDataObject(mixed.Get());
         Require(ReadPaths(mixedConverted.Get()).size() == 2, "Mixed drag lost a shortcut");
         std::cout << "PASS distinct .lnk identities for the same EXE and mixed multi-item drag\n";
+
+        TestDropSource dragSource;
+        const auto originalDrag = g_doDragDrop;
+        g_doDragDrop = FailingNativeDrag;
+        nativeDragCalls = 0;
+        DWORD effect = DROPEFFECT_COPY | DROPEFFECT_LINK;
+        const auto failedDrag = DoDragDropHook(object.Get(), &dragSource, effect, &effect);
+        Require(failedDrag == DRAGDROP_S_CANCEL && nativeDragCalls == 1,
+                "A failed native drag escaped or was replayed");
+        Require(effect == DROPEFFECT_NONE && !g_sourceDragActive,
+                "Failed drag left an active scope or a transfer effect");
+        g_doDragDrop = CanceledNativeDrag;
+        nativeDragCalls = 0;
+        const auto canceledDrag = DoDragDropHook(nullptr, &dragSource, DROPEFFECT_COPY, &effect);
+        Require(canceledDrag == DRAGDROP_S_CANCEL && nativeDragCalls == 1,
+                "A non-file drag was not delegated exactly once");
+        g_doDragDrop = originalDrag;
+        Require(dragSource.references == 1, "The drag source wrapper leaked a COM reference");
+        std::cout << "PASS drag exception boundary, no operation replay, native fallback and COM ownership\n";
     } catch (HRESULT result) {
         std::cerr << "FAIL HRESULT=0x" << std::hex << static_cast<unsigned>(result) << '\n';
         exitCode = 1;

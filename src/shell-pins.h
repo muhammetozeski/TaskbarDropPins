@@ -9,6 +9,8 @@ static constexpr IID kPinManager2Id =
     {0x87D9E034,0x56D0,0x4F8C,{0xBE,0x59,0x99,0x7B,0x01,0x75,0x47,0x10}};
 static constexpr IID kPinManager3Id =
     {0x27216D91,0x78B8,0x406D,{0x85,0xC4,0x5F,0xDB,0xF5,0x1C,0xD1,0x6B}};
+static constexpr int kTaskbandPinCaller = 25;
+static constexpr int kTaskbandReorderCaller = 27;
 struct ShellPinManager2 : IUnknown {
     virtual HRESULT STDMETHODCALLTYPE PinShim(PCUIDLIST_ABSOLUTE, int) = 0;
     virtual HRESULT STDMETHODCALLTYPE PinTrusted(PCUIDLIST_ABSOLUTE, int) = 0;
@@ -99,13 +101,14 @@ static unsigned PinFiles(const std::vector<fs::path>& paths, HWND window, POINT 
         const auto shortcut = CanPinWithoutWrapper(path) ? path : PrepareShortcut(path);
         PIDLIST_ABSOLUTE id = nullptr;
         Check(SHParseDisplayName(shortcut.c_str(), nullptr, &id, 0, nullptr));
-        const HRESULT pinned = pins->PinTrusted(id, 25);
+        const HRESULT pinned = pins->PinTrusted(id, kTaskbandPinCaller);
         Wh_SetIntValue(L"lastPinResult", pinned);
         if (SUCCEEDED(pinned)) {
             ++count;
             if (movable && index >= 0) {
-                const HRESULT moved = movable->Move(id, index++, 27);
+                const HRESULT moved = movable->Move(id, index++, kTaskbandReorderCaller);
                 Wh_SetIntValue(L"lastMoveResult", moved);
+                if (FAILED(moved)) Wh_Log(L"Pin succeeded but repositioning failed: %08X", moved);
             }
         }
         CoTaskMemFree(id);

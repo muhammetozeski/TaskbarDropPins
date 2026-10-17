@@ -10,13 +10,20 @@ struct PinRequest {
 static DWORD WINAPI PinRequestThread(void* parameter) {
     std::unique_ptr<PinRequest> request(static_cast<PinRequest*>(parameter));
     const HRESULT initialized = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    const ULONGLONG started = GetTickCount64();
     try {
         if (!g_stopping) {
+            Check(initialized);
+            Wh_SetIntValue(L"sourcePinnedCount", 0);
+            Wh_Log(L"Pin request started: items=%u", static_cast<unsigned>(request->paths.size()));
             const auto count = PinFiles(request->paths, request->window, request->point);
-            Wh_SetIntValue(L"sourcePinnedCount", static_cast<int>(count));
+            if (!g_stopping) Wh_SetIntValue(L"sourcePinnedCount", static_cast<int>(count));
         }
-    } catch (HRESULT error) { Wh_SetIntValue(L"lastPinResult", error); }
-    catch (...) { Wh_SetIntValue(L"lastPinResult", E_FAIL); }
+    } catch (...) {
+        const HRESULT error = LogCurrentException(L"Pin request");
+        if (!g_stopping) Wh_SetIntValue(L"lastPinResult", error);
+    }
+    if (!g_stopping) Wh_Log(L"Pin request finished: elapsedMs=%llu", GetTickCount64() - started);
     if (SUCCEEDED(initialized)) CoUninitialize();
     return 0;
 }
@@ -27,6 +34,7 @@ struct TaskbarDropSource final : IDropSource {
     ComPtr<IDataObject> data;
     ComPtr<IDropTargetHelper> feedback;
     bool showing = false;
+    bool overTaskbar = false;
     bool dropped = false;
     HWND window = nullptr;
     POINT point{};
@@ -71,10 +79,14 @@ struct TaskbarDropSource final : IDropSource {
                 else feedback->DragOver(&point, DROPEFFECT_LINK);
             }
             SetCursor(LoadCursorW(nullptr, IDC_ARROW));
-            Wh_SetIntValue(L"sourceOverTaskbar", 1);
+            if (!overTaskbar) {
+                overTaskbar = true;
+                Wh_SetIntValue(L"sourceOverTaskbar", 1);
+            }
             return S_OK;
         }
         if (feedback && showing) { feedback->DragLeave(); showing = false; }
+        overTaskbar = false;
         return original->GiveFeedback(effect);
     }
 };
@@ -86,18 +98,26 @@ static HRESULT WINAPI DoDragDropHook(IDataObject* data, IDropSource* source,
                                     DWORD allowed, DWORD* effect) {
     if (g_stopping || !source || g_sourceDragActive)
         return g_doDragDrop(data, source, allowed, effect);
+    bool originalCalled = false;
+    auto runOriginal = [&](IDropSource* current) {
+        originalCalled = true;
+        return g_doDragDrop(data, current, allowed, effect);
+    };
+    try {
     auto paths = ReadPaths(data);
-    if (paths.empty()) return g_doDragDrop(data, source, allowed, effect);
+    if (paths.empty()) return runOriginal(source);
     bool needsConversion = false;
     for (const auto& path : paths) {
         if (!CanPinWithoutWrapper(path)) { needsConversion = true; break; }
     }
-    if (!needsConversion) return g_doDragDrop(data, source, allowed, effect);
+    if (!needsConversion) return runOriginal(source);
     Wh_SetIntValue(L"sourceDragCount", Wh_GetIntValue(L"sourceDragCount", 0) + 1);
     Wh_SetIntValue(L"sourceOverTaskbar", 0);
-    auto wrapper = new TaskbarDropSource(source, data);
+    ComPtr<TaskbarDropSource> wrapper;
+    wrapper.Attach(new TaskbarDropSource(source, data));
+    struct DragScope { ~DragScope() { g_sourceDragActive = false; } } scope;
     g_sourceDragActive = true;
-    const HRESULT result = g_doDragDrop(data, wrapper, allowed, effect);
+    const HRESULT result = runOriginal(wrapper.Get());
     g_sourceDragActive = false;
     if (wrapper->feedback && wrapper->showing) wrapper->feedback->DragLeave();
     if (wrapper->dropped && !g_stopping) {
@@ -110,8 +130,17 @@ static HRESULT WINAPI DoDragDropHook(IDataObject* data, IDropSource* source,
         else Wh_SetIntValue(L"lastPinResult", HRESULT_FROM_WIN32(GetLastError()));
         if (effect) *effect = DROPEFFECT_NONE;
     }
-    wrapper->Release();
     return result;
+    } catch (...) {
+        const HRESULT error = LogCurrentException(L"Explorer source drag");
+        if (!g_stopping) Wh_SetIntValue(L"lastPinResult", error);
+        // A drag that already began must never be replayed after a failure.
+        if (originalCalled) {
+            if (effect) *effect = DROPEFFECT_NONE;
+            return DRAGDROP_S_CANCEL;
+        }
+    }
+    return g_doDragDrop(data, source, allowed, effect);
 }
 
 static bool InitializeSourceHook() {

@@ -2,8 +2,10 @@
 // @id              taskbar-drop-pins
 // @name            Taskbar Drop Pins
 // @description     Pin files, folders and shortcuts by dropping them among native Windows 11 taskbar icons.
-// @version         0.1.0
+// @version         1.0.0
 // @author          Portakal
+// @github          https://github.com/muhammetozeski
+// @homepage        https://github.com/muhammetozeski/TaskbarDropPins
 // @include         explorer.exe
 // @architecture    x86-64
 // @compilerOptions -lole32 -loleaut32 -lshell32 -lshlwapi -lpropsys -luuid -lcomctl32 -lruntimeobject -luiautomationcore -lwindowscodecs
@@ -16,7 +18,7 @@ Drag a file, folder or .lnk shortcut to the Windows 11 taskbar to pin it.
 Windows handles insertion, reordering, launching and unpinning normally.
 Hold Shift BEFORE entering the taskbar to retain ordinary file dragging.
 
-Original files and folders stay in place. Non-application .lnk shortcuts are
+Original files and folders stay in place. Input .lnk shortcuts are
 copied to permanent mod storage, preserving their Shell launch properties.
 The embedded launcher and cached icons must remain available for pinned items.
 Disabling this mod stops drag conversion; previously pinned shortcuts still open.
@@ -59,6 +61,22 @@ static UINT g_discoverMessage;
 
 static void Check(HRESULT result) {
     if (FAILED(result)) throw result;
+}
+
+// Called only from an outer catch: preserve the native error and keep C++
+// exceptions from crossing Explorer's drag or worker entry points.
+static HRESULT LogCurrentException(PCWSTR operation) noexcept {
+    HRESULT result = E_FAIL;
+    try { throw; }
+    catch (HRESULT error) {
+        result = error;
+        if (!g_stopping) Wh_Log(L"%s failed: HRESULT=%08X", operation, error);
+    } catch (const std::exception& error) {
+        if (!g_stopping) Wh_Log(L"%s failed: %S", operation, error.what());
+    } catch (...) {
+        if (!g_stopping) Wh_Log(L"%s failed with an unknown C++ exception", operation);
+    }
+    return result;
 }
 
 static void WriteBytes(const fs::path& path, const void* bytes, DWORD size) {
@@ -449,7 +467,7 @@ static HRESULT WINAPI RegisterHook(HWND window, IDropTarget* target) {
     return result;
 }
 
-#include "modern-drop.h"
+#include "shell-pins.h"
 #include "source-drop.h"
 
 static LRESULT CALLBACK WindowSubclass(HWND window, UINT message, WPARAM wp,
