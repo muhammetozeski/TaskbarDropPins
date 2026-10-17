@@ -24,11 +24,13 @@ $rows = for ($offset=0; $offset -lt $bytes.Length; $offset+=24) {
 $embedded = "static const unsigned char kLauncherBytes[] = {`n" + ($rows -join "`n") + "`n};"
 $source = [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'src\taskbar-drop-pins.wh.cpp'))
 $bundled = $source.Replace('#include "launcher-bytes.h"', $embedded)
+$modern = [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'src\modern-drop.h'))
+$bundled = $bundled.Replace('#include "modern-drop.h"', $modern)
 $modSource = Join-Path $dist 'taskbar-drop-pins.wh.cpp'
 [IO.File]::WriteAllText($modSource, $bundled, [Text.UTF8Encoding]::new($false))
 $modLibrary = Join-Path $dist 'taskbar-drop-pins.dll'
 & $compiler @common '-shared' '-DWH_MOD' '-DWH_MOD_ID=L"taskbar-drop-pins"' '-DWH_MOD_VERSION=L"0.1.0"' `
     $engineLibrary '-x' 'c++' $modSource '-include' 'windhawk_api.h' '-Wl,--export-all-symbols' `
-    '-o' $modLibrary '-lole32' '-loleaut32' '-lshell32' '-lshlwapi' '-lpropsys' '-luuid' '-lcomctl32'
+    '-o' $modLibrary '-lole32' '-loleaut32' '-lshell32' '-lshlwapi' '-lpropsys' '-luuid' '-lcomctl32' '-lruntimeobject' '-luiautomationcore'
 if ($LASTEXITCODE) { throw "Mod compilation failed with exit code $LASTEXITCODE" }
 Get-Item -LiteralPath $launcher, $modLibrary, $modSource | Select-Object Name, Length, FullName

@@ -6,7 +6,7 @@
 // @author          Portakal
 // @include         explorer.exe
 // @architecture    x86-64
-// @compilerOptions -lole32 -loleaut32 -lshell32 -lshlwapi -lpropsys -luuid -lcomctl32
+// @compilerOptions -lole32 -loleaut32 -lshell32 -lshlwapi -lpropsys -luuid -lcomctl32 -lruntimeobject -luiautomationcore
 // ==/WindhawkMod==
 // ==WindhawkModReadme==
 /*
@@ -414,9 +414,15 @@ static HRESULT WINAPI RegisterHook(HWND window, IDropTarget* target) {
     return result;
 }
 
+#include "modern-drop.h"
+
 static LRESULT CALLBACK WindowSubclass(HWND window, UINT message, WPARAM wp,
                                       LPARAM lp, DWORD_PTR) {
+    if (message == g_unsubscribeMessage) { UnsubscribeModern(window); return 0; }
     if (message == g_discoverMessage && !g_stopping) {
+        wchar_t name[100]{};
+        GetClassNameW(window, name, ARRAYSIZE(name));
+        if (wcscmp(name, L"Windows.UI.Core.CoreWindow") == 0) SubscribeModern(window);
         auto target = reinterpret_cast<IDropTarget*>(GetPropW(window, L"OleDropTargetInterface"));
         return target && DiscoverTarget(target, window);
     }
@@ -425,7 +431,10 @@ static LRESULT CALLBACK WindowSubclass(HWND window, UINT message, WPARAM wp,
 
 static BOOL CALLBACK DiscoverWindow(HWND window, LPARAM) {
     if (!IsTaskbar(window)) return TRUE;
-    if (GetPropW(window, L"OleDropTargetInterface") &&
+    wchar_t name[100]{};
+    GetClassNameW(window, name, ARRAYSIZE(name));
+    if ((GetPropW(window, L"OleDropTargetInterface") ||
+         wcscmp(name, L"Windows.UI.Core.CoreWindow") == 0) &&
         WindhawkUtils::SetWindowSubclassFromAnyThread(window, WindowSubclass, 0)) {
         g_subclassed.push_back(window);
         SendMessageW(window, g_discoverMessage, 0, 0);
@@ -458,7 +467,9 @@ BOOL Wh_ModInit() {
     try { InitializeStorage(); }
     catch (...) { Wh_Log(L"Cannot initialize permanent mod storage"); return FALSE; }
     g_discoverMessage = RegisterWindowMessageW(L"TaskbarDropPins.Discover.v1");
+    g_unsubscribeMessage = RegisterWindowMessageW(L"TaskbarDropPins.Unsubscribe.v1");
     Wh_SetIntValue(L"hookedDropHandlers", 0);
+    Wh_SetIntValue(L"modernViews", 0);
     const auto ole = GetModuleHandleW(L"ole32.dll");
     if (!ole || !Wh_SetFunctionHook(reinterpret_cast<void*>(GetProcAddress(ole, "RegisterDragDrop")),
                                     reinterpret_cast<void*>(RegisterHook),
@@ -473,8 +484,10 @@ void Wh_ModAfterInit() {
 
 void Wh_ModBeforeUninit() {
     g_stopping = true;
-    for (auto window : g_subclassed)
+    for (auto window : g_subclassed) {
+        SendMessageW(window, g_unsubscribeMessage, 0, 0);
         WindhawkUtils::RemoveWindowSubclassFromAnyThread(window, WindowSubclass);
+    }
     g_subclassed.clear();
 }
 
