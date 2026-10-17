@@ -116,7 +116,16 @@ static HRESULT WINAPI DoDragDropHook(IDataObject* data, IDropSource* source,
 
 static bool InitializeSourceHook() {
     const auto ole = GetModuleHandleW(L"ole32.dll");
-    return ole && Wh_SetFunctionHook(reinterpret_cast<void*>(GetProcAddress(ole, "DoDragDrop")),
+    const auto address = ole ? GetProcAddress(ole, "DoDragDrop") : nullptr;
+    Wh_SetIntValue(L"sourceExportFound", address != nullptr);
+    const bool installed = address && Wh_SetFunctionHook(reinterpret_cast<void*>(address),
                                     reinterpret_cast<void*>(DoDragDropHook),
                                     reinterpret_cast<void**>(&g_doDragDrop));
+    Wh_SetIntValue(L"sourceHookInstalled", installed);
+    if (installed) {
+        HMODULE lifetime = nullptr;
+        GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_PIN,
+            reinterpret_cast<LPCWSTR>(&InitializeSourceHook), &lifetime);
+    }
+    return installed;
 }
