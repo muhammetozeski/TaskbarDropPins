@@ -124,7 +124,7 @@ static std::wstring Identity(const fs::path& path) {
     return text;
 }
 
-static bool IsNativeApplication(const fs::path& path) {
+static bool CanPinWithoutWrapper(const fs::path& path) {
     auto ext = Lower(path.extension().wstring());
     if (ext == L".exe" || ext == L".com") return true;
     if (ext != L".lnk") return false;
@@ -137,8 +137,10 @@ static bool IsNativeApplication(const fs::path& path) {
     wchar_t target[32768]{};
     if (FAILED(link->GetPath(target, ARRAYSIZE(target), nullptr, SLGP_RAWPATH)))
         return false;
-    auto targetExt = Lower(fs::path(target).extension().wstring());
-    return targetExt == L".exe" || targetExt == L".com";
+    // Our own links already have a distinct application identity. Other .lnk
+    // files are wrapped even when they launch an EXE: two shortcuts to the
+    // same executable may have different arguments or working directories.
+    return Lower(target) == Lower(g_launcher.wstring());
 }
 
 static void SaveIcon(const fs::path& source, const fs::path& destination) {
@@ -172,7 +174,9 @@ static fs::path PrepareShortcut(const fs::path& source) {
         if (ch < 32 || wcschr(L"<>:\"/\\|?*", ch)) ch = L'_';
     }
     if (label.size() > 100) label.resize(100);
-    auto destination = g_storage / L"links" / (label + L"-" + id + L".lnk");
+    const auto linkDirectory = g_storage / L"links" / id;
+    fs::create_directories(linkDirectory);
+    auto destination = linkDirectory / (label + L".lnk");
     const auto icon = g_storage / L"icons" / (id + L".ico");
     fs::path launchTarget = source;
     if (Lower(source.extension().wstring()) == L".lnk") {
@@ -211,7 +215,7 @@ static ComPtr<IDataObject> PrepareDataObject(IDataObject* source) {
     const auto storagePrefix = Lower(g_storage.wstring() + L"\\");
     for (const auto& path : paths) {
         if (!path.is_absolute() || !fs::exists(path)) return {};
-        if (Lower(path.wstring()).starts_with(storagePrefix) || IsNativeApplication(path)) {
+        if (Lower(path.wstring()).starts_with(storagePrefix) || CanPinWithoutWrapper(path)) {
             converted.push_back(path);
         } else {
             converted.push_back(PrepareShortcut(path));

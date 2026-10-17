@@ -120,11 +120,20 @@ int wmain(int argc, wchar_t** argv) {
         const auto appLink = root / L"Application.lnk";
         Check(persist->Save(appLink.c_str(), TRUE));
         auto appData = Files({appLink});
-        Require(!PrepareDataObject(appData.Get()), "Native application .lnk must pass through");
+        auto appConverted = PrepareDataObject(appData.Get());
+        Require(static_cast<bool>(appConverted), "Application .lnk requires a distinct shortcut identity");
+        const auto secondAppLink = root / L"Same application different arguments.lnk";
+        Check(shortcut->SetArguments(L"--different-argument"));
+        Check(persist->Save(secondAppLink.c_str(), TRUE));
+        auto twoAppLinks = Files({appLink, secondAppLink});
+        auto twoAppConverted = PrepareDataObject(twoAppLinks.Get());
+        auto twoAppPaths = ReadPaths(twoAppConverted.Get());
+        Require(twoAppPaths.size() == 2 && twoAppPaths[0] != twoAppPaths[1],
+                "Shortcuts to the same executable were merged");
         auto mixed = Files({text, appLink});
         auto mixedConverted = PrepareDataObject(mixed.Get());
-        Require(ReadPaths(mixedConverted.Get())[1] == appLink, "Mixed drag changed application shortcut");
-        std::cout << "PASS application shortcut passthrough and mixed multi-item drag\n";
+        Require(ReadPaths(mixedConverted.Get()).size() == 2, "Mixed drag lost a shortcut");
+        std::cout << "PASS distinct .lnk identities for the same EXE and mixed multi-item drag\n";
     } catch (HRESULT result) {
         std::cerr << "FAIL HRESULT=0x" << std::hex << static_cast<unsigned>(result) << '\n';
         exitCode = 1;

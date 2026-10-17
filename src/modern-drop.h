@@ -96,7 +96,7 @@ static unsigned PinFiles(const std::vector<fs::path>& paths, HWND window, POINT 
     Wh_SetIntValue(L"lastInsertionIndex", index);
     unsigned count = 0;
     for (const auto& path : paths) {
-        const auto shortcut = IsNativeApplication(path) ? path : PrepareShortcut(path);
+        const auto shortcut = CanPinWithoutWrapper(path) ? path : PrepareShortcut(path);
         PIDLIST_ABSOLUTE id = nullptr;
         Check(SHParseDisplayName(shortcut.c_str(), nullptr, &id, 0, nullptr));
         const HRESULT pinned = pins->PinTrusted(id, 25);

@@ -90,7 +90,7 @@ static HRESULT WINAPI DoDragDropHook(IDataObject* data, IDropSource* source,
     if (paths.empty()) return g_doDragDrop(data, source, allowed, effect);
     bool needsConversion = false;
     for (const auto& path : paths) {
-        if (!IsNativeApplication(path)) { needsConversion = true; break; }
+        if (!CanPinWithoutWrapper(path)) { needsConversion = true; break; }
     }
     if (!needsConversion) return g_doDragDrop(data, source, allowed, effect);
     Wh_SetIntValue(L"sourceDragCount", Wh_GetIntValue(L"sourceDragCount", 0) + 1);
