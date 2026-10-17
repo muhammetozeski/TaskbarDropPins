@@ -52,6 +52,7 @@ static fs::path g_launcher;
 static std::atomic<bool> g_stopping{false};
 static std::mutex g_hooksMutex;
 static std::vector<HWND> g_subclassed;
+static std::unordered_map<IDropTarget*, HWND> g_targetWindows;
 static UINT g_discoverMessage;
 
 static void Check(HRESULT result) {
@@ -277,20 +278,32 @@ static HRESULT STDMETHODCALLTYPE EnterHook(IDropTarget* target, IDataObject* dat
     auto previous = TakeState(target);
     previous.reset();
     std::shared_ptr<DragState> state;
+    bool taskbarTarget = false;
+    {
+        std::lock_guard lock(g_hooksMutex);
+        auto it = g_targetWindows.find(target);
+        taskbarTarget = it != g_targetWindows.end() && IsTaskbar(it->second);
+    }
+    if (taskbarTarget) {
+        Wh_SetIntValue(L"lastEnterAllowed", effect ? *effect : 0);
+        Wh_SetIntValue(L"lastEnterKeys", keys);
+        Wh_SetIntValue(L"enterCount", Wh_GetIntValue(L"enterCount", 0) + 1);
+    }
     if (!g_stopping && effect && (*effect & (DROPEFFECT_LINK | DROPEFFECT_COPY)) &&
-        !(keys & (MK_SHIFT | MK_RBUTTON)) &&
-        IsTaskbar(WindowFromPoint({point.x, point.y}))) {
+        !(keys & (MK_SHIFT | MK_RBUTTON)) && taskbarTarget) {
         try {
             auto replacement = PrepareDataObject(data);
             if (replacement) {
                 state = std::make_shared<DragState>();
                 state->object = std::move(replacement);
                 state->allowed = *effect;
+                Wh_SetIntValue(L"convertedCount", Wh_GetIntValue(L"convertedCount", 0) + 1);
                 std::lock_guard lock(g_dragsMutex);
                 g_drags[target] = state;
                 Wh_Log(L"Converted filesystem drag for native taskbar pinning");
             }
         } catch (HRESULT result) {
+            Wh_SetIntValue(L"lastPrepareError", result);
             Wh_Log(L"Shortcut preparation failed: %08X", result);
         } catch (const std::exception& error) {
             Wh_Log(L"Shortcut preparation failed: %S", error.what());
@@ -300,6 +313,7 @@ static HRESULT STDMETHODCALLTYPE EnterHook(IDropTarget* target, IDataObject* dat
     }
     const HRESULT result = g_enter[Slot](target, state ? state->object.Get() : data,
                                          keys, point, effect);
+    if (taskbarTarget) Wh_SetIntValue(L"lastNativeEnterEffect", effect ? *effect : 0);
     FinishEffect(effect, state);
     return result;
 }
@@ -369,9 +383,10 @@ static bool HookMethod(void* address, std::array<void*, kSlots>& addresses,
     return false;
 }
 
-static bool DiscoverTarget(IDropTarget* target) {
+static bool DiscoverTarget(IDropTarget* target, HWND window) {
     if (!target || g_stopping) return false;
     std::lock_guard lock(g_hooksMutex);
+    g_targetWindows[target] = window;
     auto table = *reinterpret_cast<void***>(target);
     bool result = HookMethod(table[3], g_enterAddresses, g_enter,
                               EnterHooks(std::make_index_sequence<kSlots>{}));
@@ -393,7 +408,7 @@ static RegisterFunction g_register;
 static HRESULT WINAPI RegisterHook(HWND window, IDropTarget* target) {
     const HRESULT result = g_register(window, target);
     if (SUCCEEDED(result) && !g_stopping && IsTaskbar(window)) {
-        DiscoverTarget(target);
+        DiscoverTarget(target, window);
         Wh_ApplyHookOperations();
     }
     return result;
@@ -403,7 +418,7 @@ static LRESULT CALLBACK WindowSubclass(HWND window, UINT message, WPARAM wp,
                                       LPARAM lp, DWORD_PTR) {
     if (message == g_discoverMessage && !g_stopping) {
         auto target = reinterpret_cast<IDropTarget*>(GetPropW(window, L"OleDropTargetInterface"));
-        return target && DiscoverTarget(target);
+        return target && DiscoverTarget(target, window);
     }
     return DefSubclassProc(window, message, wp, lp);
 }
